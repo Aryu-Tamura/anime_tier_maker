@@ -1,0 +1,84 @@
+# プロジェクト要件定義書: ANIME TIER MAKER
+
+## 1. プロジェクト概要
+* **アプリ名**: ANIME TIER MAKER
+* **目的**: アニメのタイトル画像を用い、直感的な操作（ドラッグ＆ドロップ）で独自のTier表（ランク付け表）を作成・カスタマイズ・画像化できるWebアプリケーション。
+* **主要機能**:
+    * アニメ画像の検索・フィルタリングおよびドラッグ＆ドロップによるランク付け。
+    * Tier行（ランク行）のカスタマイズ（追加、削除、リネーム、色変更）。
+    * 作成したTier表の高画質画像ダウンロード。
+    * (Phase 5以降) ログイン機能、構成のクラウド保存、テンプレート共有。
+
+## 2. 技術スタック (Strict Mode)
+* **Framework**: Next.js 14 (App Router)
+* **Language**: TypeScript
+* **State Management**: **Zustand** (複雑なDnD状態と画像リストの管理のため採用)
+* **Styling**: Tailwind CSS, clsx, tailwind-merge
+* **UI Component**: shadcn/ui (Radix UI based), lucide-react
+* **Drag & Drop**: @dnd-kit/core, @dnd-kit/sortable, @dnd-kit/utilities
+    * **Touch Sensor**: モバイル対応のため、TouchSensorとMouseSensorを明示的に実装すること。
+* **HTTP Client**: axios (インターセプターによるレートリミット制御のため)
+* **Image Generation**: html-to-image
+* **Backend (Phase 5以降)**: Supabase
+
+## 3. データソース & 処理フロー
+* **API名**: Jikan API (Unofficial MyAnimeList API) v4
+* **エンドポイント**: `https://api.jikan.moe/v4/anime`
+* **取得データ**:
+    * `mal_id` (ID)
+    * `title` (タイトル)
+    * `images.jpg.image_url` (サムネイル画像)
+    * `year` (放送開始年)
+    * `genres` (ジャンル)
+    * `studios` (制作会社)
+* **重要: CORS対策 (Image Proxy)**
+    * `html-to-image` での画像生成時、外部ドメイン(MyAnimeList)の画像がCORSエラーを起こすのを防ぐため、以下のいずれかを実装する。
+        1.  Next.js API Route (`/api/proxy-image?url=...`) を作成し、サーバーサイドで画像をフェッチして返す。
+        2.  `html-to-image` の `proxy` オプションを使用する。
+
+## 4. 機能要件詳細
+
+### A. 検索・データ取得機能 (Sidebar)
+* **検索ロジック**:
+    * Jikan APIの `/anime` エンドポイントを使用。
+    * **Debounce実装**: 入力停止から500ms～1000ms後にリクエスト送信。
+    * **APIレートリミットハンドリング**: `429 Too Many Requests` が返ってきた場合、ユーザーに「少々お待ちください」と表示し、自動で再試行しない（API Banを防ぐため）。
+* **フィルター**:
+    * テキスト検索（タイトル）
+    * 期間指定（開始年～終了年）
+    * ジャンル選択（Action, Romance, etc.）
+* **表示**:
+    * 検索結果は縦スクロールのリスト（GridではなくList推奨）で表示。
+    * すでにTier表に配置済みの画像は、サイドバー内では「グレーアウト」または「非表示」にする。
+
+### B. Tier表編集機能 (Main Area)
+* **構造**:
+    * デフォルト行: S, A, B, C, D (5行)
+    * 未割当エリア (Unranked): サイドバーからドラッグしたが、まだランクを決めかねている画像を置くプールエリア。
+* **カスタマイズ**:
+    * **行操作**: 行の追加・削除ボタン。
+    * **行編集**: 行のラベル名（"S"→"GOD"など）のダブルクリック編集、背景色の変更機能。
+    * **並び替え**:
+        * 行内のアイテム並び替え (Sortable)。
+        * 行自体の上下並び替え (Vertical Sortable)。
+
+### C. 画像生成・出力
+* **ダウンロード**:
+    * ボタン押下でTier表エリア（Canvas）をPNGとして保存。
+    * 生成前に一時的に「削除ボタン」や「追加ボタン」などのUIコントロールを非表示にする処理（`data-html2canvas-ignore` 属性などの活用）。
+    * ファイル名: `tier-list-{timestamp}.png`
+
+## 5. UI/UX要件
+### レイアウト
+* **PC**: 左右2カラム（左: 75% Canvas, 右: 25% Sidebar）。
+* **Mobile**:
+    * 1カラム構成。
+    * Sidebarは「ドロワー（引き出し）」または「下部シート」として格納し、必要なときだけ呼び出してアイテムをドロップする形式、あるいは画面下部に横スクロールのプールエリアを常設する形式を検討。
+    * **スマホ対応**: ドラッグ＆ドロップは「長押し（Press）」で開始するようにセンサーを設定し、スクロール操作と干渉しないようにする。
+
+## 6. 開発フェーズ (Roadmap)
+1.  **Phase 1**: プロジェクトセットアップ & UI構築 (shadcn/ui導入)。
+2.  **Phase 2**: Jikan API連携 & 検索機能 (Zustandストア構築)。
+3.  **Phase 3**: DnD機能実装 (@dnd-kit統合)。
+4.  **Phase 4**: 画像生成機能 & CORS対策実装。
+5.  **Phase 5**: Supabase連携 (ログイン、保存) & カスタムDB構築。
